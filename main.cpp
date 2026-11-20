@@ -10,9 +10,8 @@
     Ambiente Desktop Gnome por enquanto!
     
     Você precisa de um DE que suporte o
-    sistema de janelas X11, como o KDE 
-    Plasma e o XFCE4, para que o código 
-    funcione corretamente.
+    sistema de janelas X11, como o XFCE4, 
+    para que o código funcione corretamente.
 */
 
 int main()
