@@ -1,4 +1,4 @@
 Vulkan_Application
-.vscode/
-.codex/
-.agents/
+.agents
+.vscode
+.codex
