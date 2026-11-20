@@ -1456,6 +1456,11 @@ uint32_t HelloTriangleApplication::findMemoryType(uint32_t typeFilter, VkMemoryP
     throw std::runtime_error("Não foi encontrado um tipo de memória adequado!");
 }
 
+void HelloTriangleApplication::createBuffer()
+{
+    // código a ser implementado
+}
+
 void HelloTriangleApplication::mainLoop()
 {
     while (!glfwWindowShouldClose(window)) 
