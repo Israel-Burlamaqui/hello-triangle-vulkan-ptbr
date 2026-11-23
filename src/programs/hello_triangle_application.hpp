@@ -75,9 +75,9 @@ struct Vertex
 
 const std::vector<Vertex> vertices = 
 {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}}
+    {{0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 };
 
 // A classe principal do programa "Hello Triangle"        
@@ -128,7 +128,10 @@ private:
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     void createVertexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    void createBuffer();
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+                    VkMemoryPropertyFlags properties, VkBuffer& buffer, 
+                    VkDeviceMemory& bufferMemory);
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     void mainLoop();
     void cleanup();
