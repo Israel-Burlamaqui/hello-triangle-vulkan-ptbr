@@ -161,6 +161,7 @@ void HelloTriangleApplication::initVulkan()
     createFramebuffers();
     createCommandPool();
     createVertexBuffer();
+    createIndexBuffer();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -1174,9 +1175,45 @@ void HelloTriangleApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
 
     VkBuffer vertexBuffers[] = {vertexBuffer};
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-    vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    /*
+        O uso de um buffer de índices para o desenho envolve duas alterações no 
+        `recordCommandBuffer`. Primeiramente, precisamos vincular o buffer de índices, 
+        assim como fizemos com o buffer de vértices. A diferença é que só é possível 
+        ter um único buffer de índices. Infelizmente, não é possível usar índices 
+        diferentes para cada atributo de vértice; portanto, ainda precisamos duplicar 
+        completamente os dados dos vértices, mesmo que apenas um atributo varie.
+    */
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    /*
+        Um buffer de índice é vinculado com a função `vkCmdBindIndexBuffer`, que recebe 
+        como parâmetros o buffer de índice, um deslocamento em bytes dentro dele e o tipo 
+        dos dados de índice. Conforme mencionado anteriormente, os tipos possíveis são 
+        `VK_INDEX_TYPE_UINT16` e `VK_INDEX_TYPE_UINT32`.
+
+        A simples vinculação de um buffer de índice ainda não altera nada; também precisamos 
+        alterar o comando de desenho para instruir o Vulkan a usar o buffer de índice. Remo- 
+        veremos a linha vkCmdDraw e a substituiremos por vkCmdDrawIndexed:
+    */
+    // vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    /*
+        A chamada a essa função é muito semelhante à vkCmdDraw. Os dois primeiros parâmetros 
+        especificam o número de índices e o número de instâncias. Como não estamos usando 
+        instância, basta especificar 1 instância. 
+        
+        O número de índices representa o número de vértices que serão passados para o shader 
+        de vértices. O próximo parâmetro especifica um deslocamento no buffer de índices; 
+        usar o valor 1 faria com que a placa de vídeo começasse a ler a partir do segundo 
+        índice. 
+        
+        O penúltimo parâmetro especifica um deslocamento a ser adicionado aos índices no buffer 
+        de índices. O último parâmetro especifica um deslocamento para instância, que (novamente!) 
+        não estamos utilizando.
+    */
+
     vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
@@ -1552,6 +1589,51 @@ void HelloTriangleApplication::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
+void HelloTriangleApplication::createIndexBuffer()
+{
+    /*
+        As malhas 3D que você renderizará em uma aplicação do mundo real costumam compartilhar 
+        vértices entre vários triângulos. Isso já acontece mesmo em algo simples como desenhar 
+        um retângulo.
+
+        Para desenhar um retângulo, são necessários dois triângulos, o que significa que precisamos 
+        de um buffer de vértices com 6 vértices. O problema é que os dados de dois vértices precisam 
+        ser duplicados, resultando em 50% de redundância. A situação só piora com malhas mais complexas, 
+        nas quais os vértices são reutilizados em uma média de 3 triângulos. A solução para esse problema 
+        é usar um buffer de índice.
+
+        Um buffer de índices é, essencialmente, uma matriz de ponteiros para o buffer de vértices. Ele 
+        permite reordenar os dados dos vértices e reutilizar dados existentes para vários vértices. Os três 
+        primeiros índices definem o triângulo superior direito e os três últimos índices definem os vértices 
+        do triângulo inferior esquerdo.
+
+        O uso de um buffer de índices para o desenho envolve duas alterações no `recordCommandBuffer`. 
+        Primeiramente, precisamos vincular o buffer de índices, assim como fizemos com o buffer de vértices. 
+        A diferença é que só é possível ter um único buffer de índices. Infelizmente, não é possível usar 
+        índices diferentes para cada atributo de vértice; portanto, ainda precisamos duplicar completamente 
+        os dados dos vértices, mesmo que apenas um atributo varie.
+    */
+
+
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), static_cast<size_t>(bufferSize));
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+
+    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+
 void HelloTriangleApplication::mainLoop()
 {
     while (!glfwWindowShouldClose(window)) 
@@ -1575,6 +1657,8 @@ void HelloTriangleApplication::cleanup()
 
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, indexBuffer, nullptr);
+    vkFreeMemory(device, indexBufferMemory, nullptr);
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
