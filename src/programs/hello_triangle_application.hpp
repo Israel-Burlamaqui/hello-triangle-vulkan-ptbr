@@ -75,9 +75,20 @@ struct Vertex
 
 const std::vector<Vertex> vertices = 
 {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+/* 
+    Por enquanto, podemos continuar usando uint16_t, pois estamos utilizando menos de 
+    65.535 vértices distintos. 
+*/
+const std::vector<uint16_t> indices =
+{
+    0, 1, 2,
+    2, 3, 0
 };
 
 // A classe principal do programa "Hello Triangle"        
@@ -128,6 +139,11 @@ private:
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     void createVertexBuffer();
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+                    VkMemoryPropertyFlags properties, VkBuffer& buffer, 
+                    VkDeviceMemory& bufferMemory);
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+    void createIndexBuffer();
 
     void mainLoop();
     void cleanup();
@@ -161,5 +177,7 @@ private:
     bool framebufferResized = false;
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
     
 };

@@ -161,6 +161,7 @@ void HelloTriangleApplication::initVulkan()
     createFramebuffers();
     createCommandPool();
     createVertexBuffer();
+    createIndexBuffer();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -1174,9 +1175,45 @@ void HelloTriangleApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
 
     VkBuffer vertexBuffers[] = {vertexBuffer};
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-    vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    /*
+        O uso de um buffer de índices para o desenho envolve duas alterações no 
+        `recordCommandBuffer`. Primeiramente, precisamos vincular o buffer de índices, 
+        assim como fizemos com o buffer de vértices. A diferença é que só é possível 
+        ter um único buffer de índices. Infelizmente, não é possível usar índices 
+        diferentes para cada atributo de vértice; portanto, ainda precisamos duplicar 
+        completamente os dados dos vértices, mesmo que apenas um atributo varie.
+    */
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    /*
+        Um buffer de índice é vinculado com a função `vkCmdBindIndexBuffer`, que recebe 
+        como parâmetros o buffer de índice, um deslocamento em bytes dentro dele e o tipo 
+        dos dados de índice. Conforme mencionado anteriormente, os tipos possíveis são 
+        `VK_INDEX_TYPE_UINT16` e `VK_INDEX_TYPE_UINT32`.
+
+        A simples vinculação de um buffer de índice ainda não altera nada; também precisamos 
+        alterar o comando de desenho para instruir o Vulkan a usar o buffer de índice. Remo- 
+        veremos a linha vkCmdDraw e a substituiremos por vkCmdDrawIndexed:
+    */
+    // vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+    
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    /*
+        A chamada a essa função é muito semelhante à vkCmdDraw. Os dois primeiros parâmetros 
+        especificam o número de índices e o número de instâncias. Como não estamos usando 
+        instância, basta especificar 1 instância. 
+        
+        O número de índices representa o número de vértices que serão passados para o shader 
+        de vértices. O próximo parâmetro especifica um deslocamento no buffer de índices; 
+        usar o valor 1 faria com que a placa de vídeo começasse a ler a partir do segundo 
+        índice. 
+        
+        O penúltimo parâmetro especifica um deslocamento a ser adicionado aos índices no buffer 
+        de índices. O último parâmetro especifica um deslocamento para instância, que (novamente!) 
+        não estamos utilizando.
+    */
+
     vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
@@ -1406,38 +1443,41 @@ void HelloTriangleApplication::cleanupSwapChain()
 
 void HelloTriangleApplication::createVertexBuffer()
 {
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
-    {
-        throw std::runtime_error("Falha ao criar o vertex buffer!");
-    }
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+            memcpy(data, vertices.data(), (size_t) bufferSize);
+        vkUnmapMemory(device, stagingBufferMemory);
 
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, 
-                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
-    {
-        throw std::runtime_error("Falha ao alocar memória para o vertex buffer!");
-    }
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
 
-    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+        copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 
-    void* data;
-    vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferInfo.size);
-    vkUnmapMemory(device, vertexBufferMemory);
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
+    /*
+        Agora estamos usando um novo `stagingBuffer` com `stagingBufferMemory` para mapear 
+        e copiar os dados dos vértices. Então, vamos usar dois novos sinalizadores 
+        de uso de buffer:
+
+        -VK_BUFFER_USAGE_TRANSFER_SRC_BIT: O buffer pode ser usado como fonte em uma operação 
+                                           de transferência de memória.
+
+        -VK_BUFFER_USAGE_TRANSFER_DST_BIT: O buffer pode ser usado como destino em uma operação 
+                                           de transferência de memória.
+
+        O `vertexBuffer` agora é alocado a partir de um tipo de memória local ao dispositivo, 
+        o que geralmente significa que não podemos usar `vkMapMemory`. No entanto, podemos 
+        copiar dados do `stagingBuffer` para o `vertexBuffer`. Precisamos indicar essa intenção 
+        especificando o sinalizador de origem de transferência para o `stagingBuffer` e o 
+        sinalizador de destino de transferência para o `vertexBuffer`, juntamente com o 
+        sinalizador de uso do buffer de vértices.
+    */
 }
 
 uint32_t HelloTriangleApplication::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
@@ -1454,6 +1494,144 @@ uint32_t HelloTriangleApplication::findMemoryType(uint32_t typeFilter, VkMemoryP
     }
 
     throw std::runtime_error("Não foi encontrado um tipo de memória adequado!");
+}
+
+void HelloTriangleApplication::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+                    VkMemoryPropertyFlags properties, VkBuffer& buffer, 
+                    VkDeviceMemory& bufferMemory)
+{
+    /*
+        - Introdução
+
+        O buffer de vértices que temos no momento funciona corretamente, mas o 
+        tipo de memória que nos permite acessá-lo a partir da CPU pode não ser 
+        o tipo de memória mais adequado para a própria placa de vídeo ler. 
+        
+        A memória mais adequada possui o sinalizador VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT 
+        e, geralmente, não é acessível pela CPU em placas de vídeo dedicadas. Neste 
+        capítulo, vamos criar dois buffers de vértices. Um buffer intermediário na 
+        memória acessível pela CPU, para o qual os dados da matriz de vértices 
+        serão transferidos, e o buffer de vértices final na memória local do 
+        dispositivo. 
+        
+        Em seguida, usaremos um comando de cópia de buffer para mover os 
+        dados do buffer intermediário para o buffer de vértices propriamente dito.
+
+        - Fila de transferência
+
+        O comando de cópia de buffer requer uma família de filas que suporte operações 
+        de transferência, o que é indicado por meio do VK_QUEUE_TRANSFER_BIT. A boa 
+        notícia é que qualquer família de filas com os recursos VK_QUEUE_GRAPHICS_BIT ou 
+        VK_QUEUE_COMPUTE_BIT já suporta implicitamente as operações VK_QUEUE_TRANSFER_BIT. 
+        Nesses casos, a implementação não precisa listá-lo explicitamente em `queueFlags`.
+    */
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Falha ao criar o buffer!");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Falha ao alocar a memória do buffer!");
+    }
+
+    vkBindBufferMemory(device, buffer, bufferMemory, 0);
+}
+
+void HelloTriangleApplication::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = 0; // Opcional
+    copyRegion.dstOffset = 0; // Opcional
+    copyRegion.size = size;
+    
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+    
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphicsQueue);
+
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+}
+
+void HelloTriangleApplication::createIndexBuffer()
+{
+    /*
+        As malhas 3D que você renderizará em uma aplicação do mundo real costumam compartilhar 
+        vértices entre vários triângulos. Isso já acontece mesmo em algo simples como desenhar 
+        um retângulo.
+
+        Para desenhar um retângulo, são necessários dois triângulos, o que significa que precisamos 
+        de um buffer de vértices com 6 vértices. O problema é que os dados de dois vértices precisam 
+        ser duplicados, resultando em 50% de redundância. A situação só piora com malhas mais complexas, 
+        nas quais os vértices são reutilizados em uma média de 3 triângulos. A solução para esse problema 
+        é usar um buffer de índice.
+
+        Um buffer de índices é, essencialmente, uma matriz de ponteiros para o buffer de vértices. Ele 
+        permite reordenar os dados dos vértices e reutilizar dados existentes para vários vértices. Os três 
+        primeiros índices definem o triângulo superior direito e os três últimos índices definem os vértices 
+        do triângulo inferior esquerdo.
+
+        O uso de um buffer de índices para o desenho envolve duas alterações no `recordCommandBuffer`. 
+        Primeiramente, precisamos vincular o buffer de índices, assim como fizemos com o buffer de vértices. 
+        A diferença é que só é possível ter um único buffer de índices. Infelizmente, não é possível usar 
+        índices diferentes para cada atributo de vértice; portanto, ainda precisamos duplicar completamente 
+        os dados dos vértices, mesmo que apenas um atributo varie.
+    */
+
+
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), static_cast<size_t>(bufferSize));
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+
+    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void HelloTriangleApplication::mainLoop()
@@ -1479,6 +1657,8 @@ void HelloTriangleApplication::cleanup()
 
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
+    vkDestroyBuffer(device, indexBuffer, nullptr);
+    vkFreeMemory(device, indexBufferMemory, nullptr);
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
