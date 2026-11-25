@@ -1,6 +1,8 @@
 #include "hello_triangle_application.hpp"
 #include "load_shader.hpp"
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <iostream>
 #include <stdexcept>
 #include <set>
@@ -8,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <chrono>
 
 VkVertexInputBindingDescription Vertex::getBindingDescription()
 {
@@ -157,11 +160,15 @@ void HelloTriangleApplication::initVulkan()
     createSwapChain();
     createImageViews();
     createRenderPass();
+    createDescriptorSetLayout();
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
     createVertexBuffer();
     createIndexBuffer();
+    createUniformBuffers();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -838,7 +845,7 @@ void HelloTriangleApplication::createGraphicsPipeline()
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
@@ -890,8 +897,8 @@ void HelloTriangleApplication::createGraphicsPipeline()
     // Pipeline Layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -1197,7 +1204,20 @@ void HelloTriangleApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
         veremos a linha vkCmdDraw e a substituiremos por vkCmdDrawIndexed:
     */
     // vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-    
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            pipelineLayout, 0, 1, &descriptorSets[currentFrame],
+                            0, nullptr);
+    /*
+        Ao contrário dos buffers de vértices e de índices, os conjuntos de descritores não 
+        são exclusivos dos pipelines gráficos. Portanto, precisamos especificar se queremos 
+        vincular os conjuntos de descritores ao pipeline gráfico ou ao de computação. O próximo 
+        parâmetro é o layout no qual os descritores se baseiam. Os três parâmetros seguintes 
+        especificam o índice do primeiro conjunto de descritores, o número de conjuntos a serem 
+        vinculados e a matriz dos conjuntos a serem vinculados. Os dois últimos parâmetros 
+        especificam uma matriz de deslocamentos usados para descritores 
+        dinâmicos.
+    */
+
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
     /*
         A chamada a essa função é muito semelhante à vkCmdDraw. Os dois primeiros parâmetros 
@@ -1356,6 +1376,8 @@ void HelloTriangleApplication::drawFrame()
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+
+    updateUniformBuffer(currentFrame);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1525,7 +1547,7 @@ void HelloTriangleApplication::createBuffer(VkDeviceSize size, VkBufferUsageFlag
         VK_QUEUE_COMPUTE_BIT já suporta implicitamente as operações VK_QUEUE_TRANSFER_BIT. 
         Nesses casos, a implementação não precisa listá-lo explicitamente em `queueFlags`.
     */
-   
+
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
@@ -1635,6 +1657,153 @@ void HelloTriangleApplication::createIndexBuffer()
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
+void HelloTriangleApplication::createDescriptorSetLayout()
+{
+    /*
+        Cada ligação precisa ser descrita por meio de uma estrutura 
+        VkDescriptorSetLayoutBinding. 
+    */
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+
+    /*
+        Os dois primeiros campos especificam a ligação utilizada no shader e o tipo 
+        de descritor, que é um objeto de buffer uniforme. É possível que a variável 
+        do shader represente uma matriz de objetos de buffer uniforme, e o descriptorCount 
+        especifica o número de valores na matriz. Isso poderia ser usado para especificar 
+        uma transformação para cada um dos ossos de um esqueleto, para animação esquelética, 
+        por exemplo. Nossa transformação MVP está em um único objeto de buffer uniforme, 
+        portanto, estamos usando um descriptorCount igual a 1.
+
+        Também precisamos especificar em quais estágios do shader o descritor será referenciado. 
+        O campo `stageFlags` pode ser uma combinação de valores `VkShaderStageFlagBits` ou o 
+        valor `VK_SHADER_STAGE_ALL_GRAPHICS`. No nosso caso, estamos referenciando o descritor 
+        apenas a partir do shader de vértices.
+
+        O campo `pImmutableSamplers` é relevante apenas para descritores relacionados à 
+        amostragem de imagens, que abordaremos mais adiante. Você pode deixar esse campo 
+        com seu valor padrão.
+    */
+
+    /*
+        Precisamos especificar o layout do conjunto de descritores durante a criação do 
+        pipeline para informar ao Vulkan quais descritores os shaders utilizarão. Os layouts 
+        dos conjuntos de descritores são especificados no objeto de layout do pipeline:
+    */
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    
+
+    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Falha ao criar o descriptor set layout!");
+    }
+}
+
+void HelloTriangleApplication::createUniformBuffers()
+{
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+
+        if (vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Falha ao mapear a memória do uniform buffer!");
+        }
+    }
+
+    /*
+        Mapeamos o buffer logo após sua criação usando vkMapMemory para obter um ponteiro 
+        no qual possamos gravar os dados posteriormente. O buffer permanece mapeado a esse 
+        ponteiro durante todo o ciclo de vida do aplicativo. Essa técnica é chamada de 
+        "persistent mapping” e funciona em todas as implementações do Vulkan. 
+        Não precisar mapear o buffer toda vez que precisamos atualizá-lo aumenta o desempenho, 
+        já que o mapeamento tem um custo.
+    */
+}
+
+void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage)
+{
+    static const auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1;
+
+    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+}
+
+void HelloTriangleApplication::createDescriptorPool()
+{
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Falha ao criar o descriptor pool!");
+    }
+}
+
+void HelloTriangleApplication::createDescriptorSets()
+{
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+
+    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Falha ao alocar os descriptor sets!");
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    }
+}
+
 void HelloTriangleApplication::mainLoop()
 {
     while (!glfwWindowShouldClose(window)) 
@@ -1652,17 +1821,27 @@ void HelloTriangleApplication::cleanup()
         Precisamos desalocar todos os objetos Vulkan que criamos para evitar 
         memory leaks ou comportamentos indefinidos, já que ele foi projetado 
         para desempenho máximo em hardware moderno e não irá tolerar nenhum 
-        erro SEU!!!
+        erro SEU!
     */
     cleanupSwapChain();
+
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
     vkDestroyBuffer(device, indexBuffer, nullptr);
     vkFreeMemory(device, indexBufferMemory, nullptr);
 
+    for (size_t i = 0; i < uniformBuffers.size(); i++)
+    {
+        vkUnmapMemory(device, uniformBuffersMemory[i]);
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    }
+
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
 

@@ -91,6 +91,19 @@ const std::vector<uint16_t> indices =
     2, 3, 0
 };
 
+// Utilitários para o Uniform Buffer Object
+struct UniformBufferObject
+{
+    /*
+        Nem sempre nossos objetos terão membros com o mesmo tamanho em bytes. Por isso,
+        precisamos expecificar o alinhamento deles de forma explícita para o Vulkan, usando
+        um especificador - alignas() - introduzido no C++11:
+    */
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+};
+
 // A classe principal do programa "Hello Triangle"        
 class HelloTriangleApplication 
 {
@@ -144,6 +157,11 @@ private:
                     VkDeviceMemory& bufferMemory);
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
     void createIndexBuffer();
+    void createDescriptorSetLayout();
+    void createUniformBuffers();
+    void updateUniformBuffer(uint32_t currentImage);
+    void createDescriptorPool();
+    void createDescriptorSets();
 
     void mainLoop();
     void cleanup();
@@ -179,5 +197,12 @@ private:
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<void*> uniformBuffersMapped;
+    VkDescriptorSetLayout descriptorSetLayout;
+    VkDescriptorPool descriptorPool;
+    std::vector<VkDescriptorSet> descriptorSets;
+
     
 };
