@@ -91,6 +91,14 @@ const std::vector<uint16_t> indices =
     2, 3, 0
 };
 
+// Utilitários para o Uniform Buffer Object
+struct UniformBufferObject
+{
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
 // A classe principal do programa "Hello Triangle"        
 class HelloTriangleApplication 
 {
@@ -144,6 +152,9 @@ private:
                     VkDeviceMemory& bufferMemory);
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
     void createIndexBuffer();
+    void createDescriptorSetLayout();
+    void createUniformBuffers();
+    void updateUniformBuffer(uint32_t currentImage);
 
     void mainLoop();
     void cleanup();
@@ -179,5 +190,9 @@ private:
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<void*> uniformBuffersMapped;
+    VkDescriptorSetLayout descriptorSetLayout;
     
 };
