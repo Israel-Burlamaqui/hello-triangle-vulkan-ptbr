@@ -1644,6 +1644,10 @@ void HelloTriangleApplication::createIndexBuffer()
 
 void HelloTriangleApplication::createDescriptorSetLayout()
 {
+    /*
+        Cada ligação precisa ser descrita por meio de uma estrutura 
+        VkDescriptorSetLayoutBinding. 
+    */
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1651,10 +1655,36 @@ void HelloTriangleApplication::createDescriptorSetLayout()
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     uboLayoutBinding.pImmutableSamplers = nullptr;
 
+    /*
+        Os dois primeiros campos especificam a ligação utilizada no shader e o tipo 
+        de descritor, que é um objeto de buffer uniforme. É possível que a variável 
+        do shader represente uma matriz de objetos de buffer uniforme, e o descriptorCount 
+        especifica o número de valores na matriz. Isso poderia ser usado para especificar 
+        uma transformação para cada um dos ossos de um esqueleto, para animação esquelética, 
+        por exemplo. Nossa transformação MVP está em um único objeto de buffer uniforme, 
+        portanto, estamos usando um descriptorCount igual a 1.
+
+        Também precisamos especificar em quais estágios do shader o descritor será referenciado. 
+        O campo `stageFlags` pode ser uma combinação de valores `VkShaderStageFlagBits` ou o 
+        valor `VK_SHADER_STAGE_ALL_GRAPHICS`. No nosso caso, estamos referenciando o descritor 
+        apenas a partir do shader de vértices.
+
+        O campo `pImmutableSamplers` é relevante apenas para descritores relacionados à 
+        amostragem de imagens, que abordaremos mais adiante. Você pode deixar esse campo 
+        com seu valor padrão.
+    */
+
+    /*
+        Precisamos especificar o layout do conjunto de descritores durante a criação do 
+        pipeline para informar ao Vulkan quais descritores os shaders utilizarão. Os layouts 
+        dos conjuntos de descritores são especificados no objeto de layout do pipeline:
+    */
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &uboLayoutBinding;
+
+    
 
     if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
     {
@@ -1679,6 +1709,15 @@ void HelloTriangleApplication::createUniformBuffers()
             throw std::runtime_error("Falha ao mapear a memória do uniform buffer!");
         }
     }
+
+    /*
+        Mapeamos o buffer logo após sua criação usando vkMapMemory para obter um ponteiro 
+        no qual possamos gravar os dados posteriormente. O buffer permanece mapeado a esse 
+        ponteiro durante todo o ciclo de vida do aplicativo. Essa técnica é chamada de 
+        "persistent mapping” e funciona em todas as implementações do Vulkan. 
+        Não precisar mapear o buffer toda vez que precisamos atualizá-lo aumenta o desempenho, 
+        já que o mapeamento tem um custo.
+    */
 }
 
 void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage)
