@@ -1525,6 +1525,7 @@ void HelloTriangleApplication::createBuffer(VkDeviceSize size, VkBufferUsageFlag
         VK_QUEUE_COMPUTE_BIT já suporta implicitamente as operações VK_QUEUE_TRANSFER_BIT. 
         Nesses casos, a implementação não precisa listá-lo explicitamente em `queueFlags`.
     */
+   
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
