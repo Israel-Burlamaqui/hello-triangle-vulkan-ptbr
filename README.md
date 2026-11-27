@@ -1,6 +1,6 @@
 # Hello Triangle em Vulkan (português brasileiro)
 
-Este repositório implementa os capítulos de "Drawing a triangle" a "Texture Mapping" do [vulkan-tutorial](https://vulkan-tutorial.com/) com comentários em português brasileiro. Nomes de atributos, métodos, classes e funções estáticas permanecem iguais aos originais.
+Este repositório implementa os capítulos de "Drawing a triangle" a "Loading Models" do [vulkan-tutorial](https://vulkan-tutorial.com/) com comentários em português brasileiro. Nomes de atributos, métodos, classes e funções estáticas permanecem iguais aos originais.
 
 
 ## Compilando
