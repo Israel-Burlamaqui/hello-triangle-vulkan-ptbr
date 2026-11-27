@@ -1,7 +1,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "src/programs/hello_triangle_application.hpp"
+#include "src/programs/model_application.hpp"
 
 /*
     Feito por Israel Burlamaqui.
@@ -16,7 +16,7 @@
 
 int main()
 {
-    HelloTriangleApplication app;
+    ModelApplication app;
 
     try 
     {
