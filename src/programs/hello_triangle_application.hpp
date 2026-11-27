@@ -163,12 +163,17 @@ private:
     void createDescriptorPool();
     void createDescriptorSets();
     void createTextureImage();
-    void createImage();
+    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
+                    VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
+                    VkImage& image, VkDeviceMemory& imageMemory);
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
     void transitionImageLayout(VkImage image, VkFormat format, 
                             VkImageLayout oldLayout, VkImageLayout newLayout);
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+    void createTextureImageView();
+    VkImageView createImageView(VkImage image, VkFormat format);
+    void createTextureSampler();
 
     void mainLoop();
     void cleanup();
@@ -212,6 +217,9 @@ private:
     std::vector<VkDescriptorSet> descriptorSets;
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
+    VkImageView textureImageView;
+    VkSampler textureSampler;
+
 
     
 };
