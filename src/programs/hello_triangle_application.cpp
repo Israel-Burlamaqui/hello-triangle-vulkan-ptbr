@@ -168,6 +168,7 @@ void HelloTriangleApplication::initVulkan()
     createIndexBuffer();
     createUniformBuffers();
     createDescriptorPool();
+    createTextureImage();
     createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
@@ -1804,6 +1805,37 @@ void HelloTriangleApplication::createDescriptorSets()
     }
 }
 
+void HelloTriangleApplication::createTextureImage()
+{
+
+}
+
+void HelloTriangleApplication::createImage()
+{
+
+}
+
+VkCommandBuffer HelloTriangleApplication::beginSingleTimeCommands()
+{
+
+}
+
+void HelloTriangleApplication::endSingleTimeCommands(VkCommandBuffer commandBuffer)
+{
+
+}
+
+void HelloTriangleApplication::transitionImageLayout(VkImage image, VkFormat format, 
+                            VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+
+}
+
+void HelloTriangleApplication::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+{
+
+}
+
 void HelloTriangleApplication::mainLoop()
 {
     while (!glfwWindowShouldClose(window)) 
@@ -1824,6 +1856,9 @@ void HelloTriangleApplication::cleanup()
         erro SEU!
     */
     cleanupSwapChain();
+
+    vkDestroyImage(device, textureImage, nullptr);
+    vkFreeMemory(device, textureImageMemory, nullptr);
 
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
@@ -1863,6 +1898,7 @@ void HelloTriangleApplication::cleanup()
     
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
+
 
     glfwDestroyWindow(window);
     glfwTerminate();

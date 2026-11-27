@@ -162,11 +162,18 @@ private:
     void updateUniformBuffer(uint32_t currentImage);
     void createDescriptorPool();
     void createDescriptorSets();
+    void createTextureImage();
+    void createImage();
+    VkCommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+    void transitionImageLayout(VkImage image, VkFormat format, 
+                            VkImageLayout oldLayout, VkImageLayout newLayout);
+    void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
     void mainLoop();
     void cleanup();
 
-    // Variáveis do Vulkan
+    // Atributos do Vulkan
     const uint32_t WIDTH = 640;
     const uint32_t HEIGHT = 480;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -203,6 +210,8 @@ private:
     VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
+    VkImage textureImage;
+    VkDeviceMemory textureImageMemory;
 
     
 };
